@@ -1,4 +1,5 @@
-import { Directive, ElementRef, OnInit, HostListener, Renderer2 } from '@angular/core';
+import { Directive, ElementRef, OnInit, HostListener, Renderer2, OnDestroy } from '@angular/core';
+import { Platform } from '@ionic/angular';
 
 const BACK_ICON = "<svg xmlns='http://www.w3.org/2000/svg' width='25px' viewBox='0 0 512 512'><title>Chevron Back</title><path fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='48' d='M328 112L184 256l144 144'/></svg>"
 const FORWARD_ICON = "<svg xmlns='http://www.w3.org/2000/svg' width='25px' viewBox='0 0 512 512'><title>Chevron Forward</title><path fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='48' d='M184 112l144 144-144 144'/></svg>"
@@ -21,7 +22,7 @@ const IMG_STYLE = `
 @Directive({
   selector: '[lightbox]' // Attribute selector
 })
-export class NgxLightboxGalleryDirective implements OnInit {
+export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   image: HTMLImageElement
   imageClone: HTMLImageElement
   lightboxContainer: HTMLDivElement
@@ -30,7 +31,35 @@ export class NgxLightboxGalleryDirective implements OnInit {
   lightboxSpinner: HTMLDivElement
   gallery: HTMLImageElement[]
   currentImageIndex: number = -1
+  hardwareBackButtonSubscription
+  constructor(
+    private elementRef: ElementRef, 
+    private render: Renderer2,
+    private platform: Platform
+  ) {}
+
+  ngOnInit() {
+    this.image = this.elementRef.nativeElement
+  }
+
+  ngOnDestroy() {
+    this.removeHardwareBackButtonListener()
+  }
+
+  handleHardwareBackButton() {
+    this.hardwareBackButtonSubscription = this.platform.backButton.subscribeWithPriority(100, ()=> {
+      this.close()
+    })
+  }
+
+  removeHardwareBackButtonListener() {
+    if (this.hardwareBackButtonSubscription) {
+      this.hardwareBackButtonSubscription.unsubscribe()
+    }
+  }
+
   @HostListener('click') onClick() {
+    this.handleHardwareBackButton()
     this.imageClone = <HTMLImageElement>this.image.cloneNode()
     this.lightboxContainer = this.render.createElement('div')
     this.render.setAttribute(this.lightboxContainer, 'style', `
@@ -45,10 +74,8 @@ export class NgxLightboxGalleryDirective implements OnInit {
       display: flex;
       align-items: center;
       justify-content: center;
-      user-select: none;
     `)
     this.render.setAttribute(this.imageClone, 'style', IMG_STYLE)
-    this.render.removeAttribute(this.imageClone, 'lightbox')
     this.render.appendChild(this.lightboxContainer, this.imageClone)
     
     this.createLightboxOverlay()
@@ -68,13 +95,6 @@ export class NgxLightboxGalleryDirective implements OnInit {
 
     this.render.listen(this.lightboxOverlay, 'click', ()=> this.close())
     this.render.listen(this.lightboxCloseButton, 'click', () => this.close())
-  }
-  constructor(private elementRef: ElementRef, private render: Renderer2) {
-
-  }
-
-  ngOnInit() {
-    this.image = this.elementRef.nativeElement
   }
 
   private createLightboxSpinner() {
@@ -149,7 +169,6 @@ export class NgxLightboxGalleryDirective implements OnInit {
     if (this.gallery.length > 1) {
       this.gallery = this.gallery.filter(img => img.src != this.image.src).map(img => {
         const clonedImg = img.cloneNode() as HTMLImageElement
-        this.render.removeAttribute(clonedImg, 'lightbox')
         this.render.setAttribute(clonedImg, 'style', IMG_STYLE)
         this.render.appendChild(this.lightboxContainer, clonedImg)
         return clonedImg
@@ -230,9 +249,8 @@ export class NgxLightboxGalleryDirective implements OnInit {
     this.toggleImage(currentImg, false)
     this.render.setStyle(this.lightboxOverlay, 'opacity', '0')
     setTimeout(() => {
-      try {
-        this.render.removeChild(document.body, this.lightboxContainer)
-      }catch(e) {}
+      this.removeHardwareBackButtonListener()
+      this.render.removeChild(document.body, this.lightboxContainer)
     }, 300);
   }
 

@@ -1,5 +1,18 @@
 import { Directive, ElementRef, OnInit, HostListener, Renderer2, OnDestroy } from '@angular/core';
-import { Platform } from '@ionic/angular';
+import * as Hammer from 'hammerjs';
+
+function importModule(moduleName):Promise<any>{
+  return new Promise(async (resolve)=> {
+    try {
+      const importedModule = await import(moduleName);
+      console.log("\timported ...");
+      resolve(importedModule)
+    }catch(e) {
+      // console.log('Import error', e)
+      resolve(null)
+    }
+  })
+}
 
 const BACK_ICON = "<svg xmlns='http://www.w3.org/2000/svg' width='25px' viewBox='0 0 512 512'><title>Chevron Back</title><path fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='48' d='M328 112L184 256l144 144'/></svg>"
 const FORWARD_ICON = "<svg xmlns='http://www.w3.org/2000/svg' width='25px' viewBox='0 0 512 512'><title>Chevron Forward</title><path fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='48' d='M184 112l144 144-144 144'/></svg>"
@@ -17,6 +30,8 @@ const IMG_STYLE = `
   transform: scale(0.5);
   background: #fff;
   transition: all 0.3s ease-in-out;
+  user-drag: none;
+  -webkit-user-drag: none;
 `
 
 @Directive({
@@ -32,14 +47,17 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   gallery: HTMLImageElement[]
   currentImageIndex: number = -1
   hardwareBackButtonSubscription
+  ionicModule: any
   constructor(
     private elementRef: ElementRef, 
     private render: Renderer2,
-    private platform: Platform
+    // private platform: ionic.Platform
   ) {}
 
-  ngOnInit() {
+  async ngOnInit() {
     this.image = this.elementRef.nativeElement
+    this.ionicModule = await importModule('@ionic/angular');
+    console.log('IonicModule', this.ionicModule)
   }
 
   ngOnDestroy() {
@@ -47,9 +65,12 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   }
 
   handleHardwareBackButton() {
-    this.hardwareBackButtonSubscription = this.platform.backButton.subscribeWithPriority(100, ()=> {
-      this.close()
-    })
+    if (this.ionicModule) {
+      const platform = this.ionicModule.Platform
+      this.hardwareBackButtonSubscription = platform.backButton.subscribeWithPriority(100, ()=> {
+        this.close()
+      })
+    }
   }
 
   removeHardwareBackButtonListener() {
@@ -62,6 +83,8 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
     this.handleHardwareBackButton()
     this.imageClone = <HTMLImageElement>this.image.cloneNode()
     this.lightboxContainer = this.render.createElement('div')
+    const hammerManager = new Hammer(this.imageClone)
+    hammerManager.on('pan', ev => this.onPan(ev))
     this.render.setAttribute(this.lightboxContainer, 'style', `
       position: fixed;
       z-index: 1000;
@@ -74,6 +97,7 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
       display: flex;
       align-items: center;
       justify-content: center;
+      user-select: none;
     `)
     this.render.setAttribute(this.imageClone, 'style', IMG_STYLE)
     this.render.appendChild(this.lightboxContainer, this.imageClone)
@@ -252,6 +276,10 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
       this.removeHardwareBackButtonListener()
       this.render.removeChild(document.body, this.lightboxContainer)
     }, 300);
+  }
+
+  onPan(ev) {
+    console.log(ev)
   }
 
 }

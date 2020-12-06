@@ -32,6 +32,7 @@ const IMG_STYLE = `
   transition: all 0.3s ease-in-out;
   user-drag: none;
   -webkit-user-drag: none;
+  cursor: grab !important;
 `
 
 @Directive({
@@ -40,6 +41,7 @@ const IMG_STYLE = `
 export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   image: HTMLImageElement
   imageClone: HTMLImageElement
+  activeImage: HTMLImageElement
   lightboxContainer: HTMLDivElement
   lightboxOverlay: HTMLDivElement
   lightboxCloseButton: HTMLDivElement
@@ -48,6 +50,7 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   currentImageIndex: number = -1
   hardwareBackButtonSubscription
   ionicModule: any
+  hammerManager: any
   constructor(
     private elementRef: ElementRef, 
     private render: Renderer2,
@@ -83,8 +86,7 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
     this.handleHardwareBackButton()
     this.imageClone = <HTMLImageElement>this.image.cloneNode()
     this.lightboxContainer = this.render.createElement('div')
-    const hammerManager = new Hammer(this.imageClone)
-    hammerManager.on('pan', ev => this.onPan(ev))
+    this.containerHammerSetup()
     this.render.setAttribute(this.lightboxContainer, 'style', `
       position: fixed;
       z-index: 1000;
@@ -92,12 +94,15 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
       left: 0;
       right: 0;
       bottom: 0;
+      opacity: 1;
+      transition: all 0.3s ease-in-out;
       width: 100%;
       height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
       user-select: none;
+      cursor: grab !important;
     `)
     this.render.setAttribute(this.imageClone, 'style', IMG_STYLE)
     this.render.appendChild(this.lightboxContainer, this.imageClone)
@@ -194,6 +199,7 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
       this.gallery = this.gallery.filter(img => img.src != this.image.src).map(img => {
         const clonedImg = img.cloneNode() as HTMLImageElement
         this.render.setAttribute(clonedImg, 'style', IMG_STYLE)
+        this.render.setStyle(clonedImg, 'z-index', '1000')
         this.render.appendChild(this.lightboxContainer, clonedImg)
         return clonedImg
       })
@@ -264,9 +270,123 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
   }
 
   private toggleImage(img, show = false) {
+    if (show) {
+      this.activeImage = img
+      // this.imageHammerSetup()
+    }
+    this.render.setStyle(img, 'transition', 'all 0.3s ease-in-out')
     this.render.setStyle(img, 'transform', show ? 'scale(1)' : 'scale(0.5)')
     this.render.setStyle(img, 'opacity', show ? '1' : '0')
+    this.render.setStyle(img, 'z-index', show ? '1002' : '1000')
   }
+
+  containerHammerSetup() {
+    const hammerOptions: HammerOptions = {
+      recognizers: [
+        [ Hammer.Pan, { threshold: 2, direction: Hammer.DIRECTION_VERTICAL }],
+        [ Hammer.Swipe, { direction: Hammer.DIRECTION_ALL }],
+      ]
+    }
+    const hammerManager = new Hammer.Manager(this.lightboxContainer, hammerOptions);
+    hammerManager.on('panstart', ev => this.onContainerPanStart(ev))
+    hammerManager.on('panmove', ev => this.onContainerPanMove(ev))
+    hammerManager.on('panend pancancel', ev => this.onContainerPanEnd(ev))
+    hammerManager.add(new Hammer.Swipe()).recognizeWith(hammerManager.get('pan'))
+    hammerManager.on('swipe', ev => this.onContainerSwipe(ev))
+  }
+  
+  // imageHammerSetup() {
+  //   const hammerOptions: HammerOptions = {
+  //     recognizers: [
+  //       [ Hammer.Pan, { threshold: 2, direction: Hammer.DIRECTION_HORIZONTAL }],
+  //       [ Hammer.Swipe, { threshold: 2, direction: Hammer.DIRECTION_ALL }],
+  //     ]
+  //   }
+  //   const hammerManager = new Hammer.Manager(this.activeImage, hammerOptions);
+  //   // hammerManager.on('panstart', ev => this.onImagePanStart(ev))
+  //   // hammerManager.on('panmove', ev => this.onImagePanMove(ev))
+  //   // hammerManager.on('panend pancancel', ev => this.onImagePanEnd(ev))
+  //   hammerManager.add(new Hammer.Swipe()).recognizeWith(hammerManager.get('pan'))
+  //   hammerManager.on('swipe', ev => this.onContainerSwipe(ev))
+  // }
+
+  onContainerPanStart(ev) {
+    this.render.setStyle(this.activeImage, 'transition', 'none')
+    this.render.setStyle(this.lightboxContainer, 'transition', 'none')
+  }
+
+  onContainerPanMove(ev) {
+    if (ev.direction === Hammer.DIRECTION_UP || ev.direction === Hammer.DIRECTION_DOWN) {
+      this.render.setStyle(this.activeImage, 'transform', `translate3d(0,${ev.deltaY}px,0)`)
+      const limit = (window.innerHeight / 4)
+      const opacity = (1 - (Math.abs(ev.deltaY)/limit))
+      this.render.setStyle(this.lightboxContainer, 'opacity', `${opacity}`)
+    }else if (ev.direction === Hammer.DIRECTION_RIGHT || ev.direction === Hammer.DIRECTION_LEFT) {
+      
+    }
+  }
+
+  onContainerPanEnd(ev) {
+    this.render.setStyle(this.activeImage, 'transition', 'all 0.3s ease-in-out')
+    this.render.setStyle(this.lightboxContainer, 'transition', 'all 0.3s ease-in-out')
+    // const imageBounding = this.activeImage.getBoundingClientRect()
+    // const imageMiddlePosition = imageBounding.y + (imageBounding.height / 2)
+    const windowHalf = (window.innerHeight / 2)
+    if (Math.abs(ev.deltaY) < (windowHalf / 2)) {
+      this.render.setStyle(this.activeImage, 'transform', `translate3d(0,0,0)`)
+      this.render.setStyle(this.lightboxContainer, 'opacity', `1`)
+    }else {
+      this.close()
+    }
+  }
+
+  onContainerSwipe(ev) {
+    if (ev.direction === Hammer.DIRECTION_UP || ev.direction === Hammer.DIRECTION_DOWN) {
+      this.close()
+    }else if (ev.direction === Hammer.DIRECTION_LEFT) {
+      this.prevImage()
+    }else if (ev.direction === Hammer.DIRECTION_RIGHT) {
+      this.nextImage()
+    }
+  }
+
+  // Image gesture
+  // onImagePanStart(ev) {
+  //   this.render.setStyle(this.activeImage, 'transition', 'none')
+  // }
+
+  // onImagePanMove(ev) {
+  //   if (ev.direction === Hammer.DIRECTION_LEFT || ev.direction === Hammer.DIRECTION_RIGHT) {
+  //     const limit = (window.innerWidth / 4)
+  //     const scale = (1 - (Math.abs(ev.deltaX)/limit))
+  //     console.log(scale)
+  //     if (scale > 0.4) {
+  //       this.render.setStyle(this.activeImage, 'transform', `scale(${scale})`)
+  //       this.render.setStyle(this.activeImage, 'opacity', `${scale}`)
+  //     }
+  //   }
+  // }
+
+  // onImagePanEnd(ev) {
+  //   this.render.setStyle(this.activeImage, 'transition', 'all 0.3s ease-in-out')
+  //   const limit = (window.innerWidth / 4)
+  //   const scale = (1 - (Math.abs(ev.deltaX)/limit))
+  //   const windowWidthHalf = (window.innerHeight / 2)
+  //   if (scale >= 0.5) {
+  //     this.render.setStyle(this.activeImage, 'transform', `scale(1)`)
+  //     this.render.setStyle(this.activeImage, 'opacity', `1`)
+  //   }else {
+  //     if (ev.direction === Hammer.DIRECTION_LEFT) {
+  //       this.prevImage()
+  //     }else if (ev.direction === Hammer.DIRECTION_RIGHT) {
+  //       this.nextImage()
+  //     }
+  //   }
+  // }
+
+  // onImageSwipe(ev) {
+  //   console.log(ev.direction)
+  // }
 
   close() {
     const currentImg = this.currentImageIndex == -1 ? this.imageClone : this.gallery[this.currentImageIndex]
@@ -276,10 +396,6 @@ export class NgxLightboxGalleryDirective implements OnInit, OnDestroy {
       this.removeHardwareBackButtonListener()
       this.render.removeChild(document.body, this.lightboxContainer)
     }, 300);
-  }
-
-  onPan(ev) {
-    console.log(ev)
   }
 
 }

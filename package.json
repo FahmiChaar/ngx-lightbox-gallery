@@ -1,6 +1,6 @@
 {
   "name": "ngx-lightbox-gallery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Mohamed Fahmi Chaar",
   "peerDependencies": {
     "@angular/common": "^11.0.0",
